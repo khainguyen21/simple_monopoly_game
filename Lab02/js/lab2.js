@@ -1,339 +1,541 @@
+// ===== MONOPOLY GAME =====
 
-let nodeList;
+// Game State
+const gameState = {
+    players: [
+        { position: 0, balance: 1500, properties: [], inJail: false, jailTurns: 0 },
+        { position: 0, balance: 1500, properties: [], inJail: false, jailTurns: 0 }
+    ],
+    currentPlayer: 0,
+    doublesCount: 0,
+    gameOver: false
+};
 
-let currentpos = 0;
-let currentpos2 = 0;
-let turn = 0;
+// Board spaces (40 spaces total, indexed 0-39)
+const boardSpaces = [];
 
-let player1Balance = 3000;
-let player2Balance = 3000;
-let currentPlayer = 1;
+// Chance and Community Chest Cards
+const chanceCards = [
+    { text: "Advance to GO! Collect $200", action: "moveTo", value: 0 },
+    { text: "Bank pays you dividend of $50", action: "receive", value: 50 },
+    { text: "Go back 3 spaces", action: "moveBack", value: 3 },
+    { text: "Go directly to Jail", action: "jail", value: 0 },
+    { text: "Make general repairs: Pay $25", action: "pay", value: 25 },
+    { text: "Speeding fine: Pay $15", action: "pay", value: 15 },
+    { text: "You have been elected Chairman of the Board: Pay $50", action: "pay", value: 50 },
+    { text: "Your building loan matures: Collect $150", action: "receive", value: 150 },
+    { text: "You have won a crossword competition: Collect $100", action: "receive", value: 100 },
+    { text: "Get out of Jail Free!", action: "none", value: 0 }
+];
 
-const Properties1 = [];
-const Properties2 = [];
+const communityChestCards = [
+    { text: "Advance to GO! Collect $200", action: "moveTo", value: 0 },
+    { text: "Bank error in your favor: Collect $200", action: "receive", value: 200 },
+    { text: "Doctor's fees: Pay $50", action: "pay", value: 50 },
+    { text: "From sale of stock you get $50", action: "receive", value: 50 },
+    { text: "Go directly to Jail", action: "jail", value: 0 },
+    { text: "Holiday fund matures: Receive $100", action: "receive", value: 100 },
+    { text: "Income tax refund: Collect $20", action: "receive", value: 20 },
+    { text: "Life insurance matures: Collect $100", action: "receive", value: 100 },
+    { text: "Pay hospital fees: $100", action: "pay", value: 100 },
+    { text: "Pay school fees: $50", action: "pay", value: 50 },
+    { text: "Receive $25 consultancy fee", action: "receive", value: 25 },
+    { text: "You inherit $100", action: "receive", value: 100 },
+    { text: "Second prize in beauty contest: Collect $10", action: "receive", value: 10 }
+];
 
-const button = document.querySelector("#RollDice");
+// DOM Elements
+let rollButton, dice1El, dice2El, diceTotalEl, gameMessageEl;
+let player1Card, player2Card, player1AmtEl, player2AmtEl;
+let modal, modalIcon, modalTitle, modalMessage, modalClose;
+let gameOverModal, winnerTitle, winnerMessage, restartBtn;
+let player1Token, player2Token;
 
-const takeAChanceText = ["Second Place in Beauty Contest: $10", "Bank Pays You Dividend of $50",
-"Repair your Properties. You owe $250", "Speeding Fine: $15", "Holiday Fund Matures: Receive $100", 
-"Pay Hospital Fees: $100"];
-const takeAChanceMoney = [-10, -50, 250, 15, -100, 100];
+// Initialize the game when DOM is loaded
+document.addEventListener('DOMContentLoaded', initGame);
 
+function initGame() {
+    // Get DOM elements
+    rollButton = document.getElementById('RollDice');
+    dice1El = document.getElementById('dice1');
+    dice2El = document.getElementById('dice2');
+    diceTotalEl = document.getElementById('diceTotal');
+    gameMessageEl = document.getElementById('gameMessage');
+    player1Card = document.getElementById('player1div');
+    player2Card = document.getElementById('player2div');
+    player1AmtEl = document.getElementById('player1amt');
+    player2AmtEl = document.getElementById('player2amt');
+    modal = document.getElementById('modal');
+    modalIcon = document.getElementById('modalIcon');
+    modalTitle = document.getElementById('modalTitle');
+    modalMessage = document.getElementById('modalMessage');
+    modalClose = document.getElementById('modalClose');
+    gameOverModal = document.getElementById('gameOverModal');
+    winnerTitle = document.getElementById('winnerTitle');
+    winnerMessage = document.getElementById('winnerMessage');
+    restartBtn = document.getElementById('restartBtn');
 
-onload=()=>{
-
-document.querySelector("#RollDice").onclick=RollDice;
-
-let nodeList=document.querySelectorAll("section");
-    for (let count=0; count<nodeList.length; count++){
-    let posnStr=nodeList[count].getAttribute("suite");
-    let rowNo=parseInt(posnStr.substring(0,2));
-    let colNo=parseInt(posnStr.substring(2,4));
-    nodeList[count].style.setProperty("grid-row",`${rowNo}/${rowNo+1}`);
-    nodeList[count].style.setProperty("grid-column",`${colNo}/${colNo+1}`);
-    }
-        
+    // Setup board grid positions
+    setupBoard();
+    
+    // Create player tokens
+    createPlayerTokens();
+    
+    // Event listeners
+    rollButton.addEventListener('click', rollDice);
+    modalClose.addEventListener('click', closeModal);
+    restartBtn.addEventListener('click', restartGame);
+    
+    // Set initial turn indicator
+    updateTurnIndicator();
+    updateBalanceDisplay();
+    
+    // Place tokens at GO
+    moveTokenToPosition(0, 0);
+    moveTokenToPosition(1, 0);
 }
 
-function RollDice()
-{
-    //get the picture
-    const player1Img = document.getElementById("player1Img");
-    const player2Img = document.getElementById("player2Img");
+function setupBoard() {
+    const sections = document.querySelectorAll('section');
+    sections.forEach((section, index) => {
+        const posStr = section.getAttribute('suite');
+        if (posStr) {
+            const rowNo = parseInt(posStr.substring(0, 2));
+            const colNo = parseInt(posStr.substring(2, 4));
+            section.style.gridRow = `${rowNo}/${rowNo + 1}`;
+            section.style.gridColumn = `${colNo}/${colNo + 1}`;
+        }
+        boardSpaces.push(section);
+    });
+}
 
-
-    // Disable the roll dice button 
-    document.querySelector("#RollDice").disabled=true;
-
-    //Get the dice value
-    // Returns a random integer from 1 to 6:
-    let dice1=Math.floor(Math.random()*6)+1;
-    let dice2=Math.floor(Math.random()*6)+1;
-
-    let dice1Image = document.createElement("img");
-    dice1Image.src = "img/dice" + dice1 + ".png";
-    dice1Image.setAttribute("width", "160px");
+function createPlayerTokens() {
+    // Create token for player 1
+    player1Token = document.createElement('div');
+    player1Token.className = 'player-token token-p1';
+    player1Token.id = 'token-p1';
     
-    let dice2Image = document.createElement("img");
-    dice2Image.src = "img/dice" + dice2 + ".png"; 
-    dice2Image.setAttribute("width", "160px");
-
-    let elem = document.querySelector("#dice1");
+    // Create token for player 2
+    player2Token = document.createElement('div');
+    player2Token.className = 'player-token token-p2';
+    player2Token.id = 'token-p2';
     
-    //if there's picture of dice1 already there
-    if (elem.firstChild)
-    {
-        elem.removeChild(elem.firstChild);
-    }
-    elem.appendChild(dice1Image);
+    // Add tokens to GO space
+    boardSpaces[0].appendChild(player1Token);
+    boardSpaces[0].appendChild(player2Token);
+}
+
+function rollDice() {
+    if (gameState.gameOver) return;
     
-
-    let elem2 = document.querySelector("#dice2");
-    //if there's picture of dice1 already there
-    if (elem2.firstChild)
-    {
-        elem2.removeChild(elem2.firstChild);
-    }
-    elem2.appendChild(dice2Image);
-
-    let totaldice = dice1 + dice2; 
-
-    //set first turn for player 1
-    if (turn == 0)
-    {
-        player1Img.classList.add("border");
-        player2Img.classList.remove("border");
-
-        // player1Img.style.border = "2px solid red"; 
-        // player2Img.style.border = "none";  
-
-        movePlayer1(totaldice);
-        turn = 1; //set back turn to 1 for player 2
-        document.querySelector("#RollDice").disabled=false;
-        currentPlayer = 1;
+    rollButton.disabled = true;
+    
+    // Animate dice
+    dice1El.classList.add('rolling');
+    dice2El.classList.add('rolling');
+    
+    // Generate random dice values
+    const dice1 = Math.floor(Math.random() * 6) + 1;
+    const dice2 = Math.floor(Math.random() * 6) + 1;
+    const total = dice1 + dice2;
+    const isDoubles = dice1 === dice2;
+    
+    // Show dice after animation
+    setTimeout(() => {
+        dice1El.classList.remove('rolling');
+        dice2El.classList.remove('rolling');
         
-        //if player 1 gets same value of the dice 
-        if (dice1 == dice2)
-        {
-            turn = 0; //rolling the dice 1 more time
+        // Display dice faces
+        displayDice(dice1El, dice1);
+        displayDice(dice2El, dice2);
+        
+        // Show total
+        diceTotalEl.textContent = `Total: ${total}`;
+        diceTotalEl.classList.add('show');
+        
+        // Process the move
+        setTimeout(() => {
+            processMove(total, isDoubles);
+        }, 500);
+    }, 500);
+}
+
+function displayDice(diceEl, value) {
+    // Clear previous dots
+    diceEl.innerHTML = '';
+    
+    // Dot positions for each dice value (using 3x3 grid)
+    const dotPositions = {
+        1: [5],
+        2: [1, 9],
+        3: [1, 5, 9],
+        4: [1, 3, 7, 9],
+        5: [1, 3, 5, 7, 9],
+        6: [1, 3, 4, 6, 7, 9]
+    };
+    
+    // Create 9 cells for the grid
+    for (let i = 1; i <= 9; i++) {
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        if (dotPositions[value].includes(i)) {
+            dot.style.display = 'block';
+        }
+        diceEl.appendChild(dot);
+    }
+}
+
+function processMove(total, isDoubles) {
+    const player = gameState.players[gameState.currentPlayer];
+    const playerNum = gameState.currentPlayer + 1;
+    
+    // Handle doubles
+    if (isDoubles) {
+        gameState.doublesCount++;
+        if (gameState.doublesCount >= 3) {
+            // Three doubles = go to jail
+            showModal('🚔', 'Speeding!', `Player ${playerNum} rolled doubles three times! Go to Jail!`);
+            sendToJail(gameState.currentPlayer);
+            endTurn(false);
+            return;
+        }
+    } else {
+        gameState.doublesCount = 0;
+    }
+    
+    // Handle jail
+    if (player.inJail) {
+        if (isDoubles) {
+            player.inJail = false;
+            player.jailTurns = 0;
+            showModal('🎉', 'Freedom!', `Player ${playerNum} rolled doubles and is out of jail!`);
+        } else {
+            player.jailTurns++;
+            if (player.jailTurns >= 3) {
+                player.inJail = false;
+                player.jailTurns = 0;
+                updateBalance(gameState.currentPlayer, -50);
+                showModal('💰', 'Bail Paid', `Player ${playerNum} paid $50 bail after 3 turns.`);
+            } else {
+                showModal('🔒', 'Still in Jail', `Player ${playerNum} is still in jail. Turn ${player.jailTurns}/3`);
+                endTurn(false);
+                return;
+            }
         }
     }
-
-    else if (turn == 1)
-    {
-        player1Img.classList.remove("border");
-        player2Img.classList.add("border");
-
-        // player1Img.style.border = "none";
-        // player2Img.style.border = "2px solid red";
-
-        movePlayer2(totaldice);
-        turn = 0;
-        document.querySelector("#RollDice").disabled=false;
-        currentPlayer = 2;
-
-        if (dice1 == dice2)
-        {
-            turn = 1;
+    
+    // Calculate new position
+    const oldPos = player.position;
+    let newPos = (oldPos + total) % 40;
+    
+    // Check if passed GO
+    const passedGo = newPos < oldPos && oldPos !== 0;
+    
+    // Update player position
+    player.position = newPos;
+    
+    // Animate token movement step by step
+    animateTokenMovement(gameState.currentPlayer, oldPos, newPos).then(() => {
+        // After animation completes, handle passed GO and process landing
+        if (passedGo) {
+            updateBalance(gameState.currentPlayer, 200);
+            showModal('💵', 'Passed GO!', `Player ${playerNum} collected $200 for passing GO!`);
         }
-
-    }
-    
-
-
-}
-
-
-function movePlayer1 (totaldice)
-{
-    currentPlayer = 1;
-
-    //get all value from the section tag 
-    const sections = document.querySelectorAll("section[val]");
-    const vals = [];
-    for (let i = 0; i < sections.length; i++) {
-      vals.push(parseInt(sections[i].getAttribute("val")));
-    }
-
-    //get the new position for player 1
-    currentpos += totaldice;
-
-    //get all section
-    nodeList = document.querySelectorAll("section");
-    
-    //if player 1 pass the start point
-    if(currentpos > 39)
-    {
-        currentpos = currentpos - 40;
-        updateBalance(vals[0]);
-        alert("You're just earning $200");
-    }
-    
-    //if player 1 is in the jail
-    if (currentpos == 30)
-    {
-        currentpos = 10;
-        alert("Go to jail");
-    }
-    
-    //if player 1 is in the tax
-    if(currentpos == 38)
-    {
-        alert("You have to pay tax for $100");
-    }
-    
-    //if player 1 is in the tax
-    if (currentpos == 4)
-    {
-        alert("You have to pay tax for $200");
-    }
-
-    //if player 1 is in the chance and community chest
-    if (currentpos == 2 ||currentpos == 17||currentpos == 7 || currentpos == 22 ||currentpos == 33 || currentpos == 36)
-    {
-        randomNum = Math.floor(Math.random() * 6);
-        alert(takeAChanceText[randomNum]);
-        updateBalance(parseInt(takeAChanceMoney[randomNum]));
-    }
-
-
-    //get image of player 1
-    let playerToken = document.getElementById("player1");
-
-    //if there's picture of player 1 already there
-    if (playerToken.firstChild)
-    {
-        playerToken.removeChild(playerToken.firstChild);
-    }
-
-    //if player 1 is not in the chance and community chest
-    if (currentpos != 2 &&currentpos != 17 && currentpos != 7 && currentpos != 22 &&currentpos != 33 && currentpos != 36 && currentpos != 10 && currentpos != 3 && currentpos != 18 && currentpos != 20 && currentpos != 12)
-    {
-        // nodeList[currentpos].style.backgroundColor = 'rgb(80, 251, 80)'; 
-        nodeList[currentpos].classList.add("player1"); 
         
-
-    }
-    
-    if(currentpos != 0)
-    {
-        updateBalance(vals[currentpos]); 
-        nodeList[currentpos].appendChild(playerToken);
-
-        // alert("This is player 1: " + vals[currentpos]);
-    }
-
-    //save all the property that player 1 landed on 
-    Properties1.push(nodeList[currentpos]);
-
-
+        // Process landing space after animation
+        setTimeout(() => {
+            processLanding(newPos, isDoubles);
+        }, passedGo ? 100 : 300);
+    });
 }
 
-
-
-
-//Player 2 
-function movePlayer2 (totaldice)
-{
-    currentPlayer = 2 ;
+function moveTokenToPosition(playerIndex, position) {
+    const token = playerIndex === 0 ? player1Token : player2Token;
+    const targetSpace = boardSpaces[position];
     
-    //get all the values for each section and push it in vals[] 
-    const sections = document.querySelectorAll("section[val]");
-    const vals = [];
-    for (let i = 0; i < sections.length; i++) {
-      vals.push(parseInt(sections[i].getAttribute("val")));
-    }
-
-    //set how many space the player 2 has to go 
-    currentpos2 += totaldice;
-
-    //get all the section
-    nodeList = document.querySelectorAll("section");
-
-
-    //if player 2 finished the cycle 
-    if(currentpos2 > 39)
-    {
-        currentpos2 = currentpos2 - 40;
-        updateBalance(vals[0]);
-        alert("You're just earning $200");
-    }
-
-    //if the player 2 landed on Go To Jail Seciton 
-    if (currentpos2 == 30)
-    {
-        currentpos2 = 10;
-        alert("Go to jail");
-        updateBalance(parseInt("50"));
-    }
-
-    //if the player 2 landed on Tax Section
-    if(currentpos2 == 38)
-    {
-        alert("You have to pay tax for $100");
-    }
-
-    //if the player 2 landed on Tax Section
-    if (currentpos2 == 4)
-    {
-        alert("You have to pay tax for $200");
-    }
-
-    //if the player 2 landed on Chance or Community Chest Section
-    if (currentpos2 == 2 ||currentpos2 == 17||currentpos2 == 7 || currentpos2 == 22 ||currentpos2 == 33 || currentpos2 == 36)
-    {
-        randomNum = Math.floor(Math.random() * 6);
-        alert(takeAChanceText[randomNum]);
-        updateBalance(parseInt(takeAChanceMoney[randomNum]));
+    // Remove token from current parent
+    if (token.parentNode) {
+        token.parentNode.removeChild(token);
     }
     
-    //get the picture of player 2   
-    let playerToken1 = document.getElementById("player2");
-
-    //display image of player 2 on where it landed on 
-    if (playerToken1.firstChild)
-    {
-        playerToken1.removeChild(playerToken1.firstChild);
-    }
-
-    //if the player 2 is not in community chest or chance section
-    if (currentpos2 != 2 && currentpos2 != 17 && currentpos2 != 7 && currentpos2 != 22 &&currentpos2 != 33 && currentpos2 != 36 && currentpos2 != 10 && currentpos2 != 4 && currentpos2 != 18 && currentpos2 != 20 && currentpos2 != 12)
-    {
-        // nodeList[currentpos2].style.backgroundColor = 'pink';
-        nodeList[currentpos2].classList.add("player2"); 
-
-    }
-
-
-    if (currentpos2 != 0)
-    {
-        nodeList[currentpos2].appendChild(playerToken1);
-        updateBalance(vals[currentpos2]); 
-        // alert("This is player 2: " + currentpos2);
-    }
-    
-
-    //save the properties where player 2 has already paid it
-    Properties2.push(nodeList[currentpos2]);
-
+    // Add token to new space
+    targetSpace.appendChild(token);
 }
 
-function updateBalance(amount)
-{
-    
-    if (currentPlayer == 1)
-    {
-
-        player1Balance -= amount; 
-
-        document.getElementById("player1amt").innerHTML = "$" + player1Balance;
-        if (player1Balance < 0)
-        {
-            alert("Player 1 is bankrupt");
-            button.disabled = true; // disable the button
-            alert("Player 2 won");
+function animateTokenMovement(playerIndex, startPos, endPos) {
+    return new Promise((resolve) => {
+        const token = playerIndex === 0 ? player1Token : player2Token;
+        let currentPos = startPos;
+        
+        // Calculate total steps (handle wrapping around the board)
+        let totalSteps;
+        if (endPos >= startPos) {
+            totalSteps = endPos - startPos;
+        } else {
+            totalSteps = (40 - startPos) + endPos;
         }
-    }
-    else if (currentPlayer == 2)
-    {
-        player2Balance -= amount; 
         
-        document.getElementById("player2amt").innerHTML = "$" + player2Balance;
-
-        if (player2Balance < 0)
-        {            
-            alert("Player 2 is bankrupt");
-            button.disabled = true; // disable the button
-            alert("Player 1 won");  
+        if (totalSteps === 0) {
+            resolve();
+            return;
+        }
+        
+        let stepsCompleted = 0;
+        const stepDelay = 150; // ms between each step
+        
+        function moveOneStep() {
+            // Move to next position
+            currentPos = (currentPos + 1) % 40;
+            stepsCompleted++;
             
+            // Move token to this space
+            const targetSpace = boardSpaces[currentPos];
+            if (token.parentNode) {
+                token.parentNode.removeChild(token);
+            }
+            targetSpace.appendChild(token);
+            
+            // Add hop animation
+            token.classList.add('hopping');
+            setTimeout(() => {
+                token.classList.remove('hopping');
+            }, 200);
+            
+            // Check if we've reached the destination
+            if (stepsCompleted < totalSteps) {
+                setTimeout(moveOneStep, stepDelay);
+            } else {
+                resolve();
+            }
         }
+        
+        // Start the animation
+        setTimeout(moveOneStep, stepDelay);
+    });
+}
+
+function processLanding(position, isDoubles) {
+    const player = gameState.players[gameState.currentPlayer];
+    const playerNum = gameState.currentPlayer + 1;
+    const space = boardSpaces[position];
+    const spaceVal = parseInt(space.getAttribute('val')) || 0;
+    const spaceId = space.id;
+    
+    // Update message
+    const spaceName = getSpaceName(space);
+    gameMessageEl.textContent = `Player ${playerNum} landed on ${spaceName}`;
+    
+    // Handle different space types
+    if (space.classList.contains('go')) {
+        // GO space - already handled if passed
+    } else if (spaceId === 'gotojail') {
+        // Go to Jail
+        showModal('👮', 'Go to Jail!', `Player ${playerNum} must go directly to Jail!`);
+        sendToJail(gameState.currentPlayer);
+        endTurn(false);
+        return;
+    } else if (space.classList.contains('jail')) {
+        // Just visiting jail
+        showModal('👀', 'Just Visiting', `Player ${playerNum} is just visiting the jail.`);
+    } else if (space.classList.contains('parking')) {
+        // Free parking - nothing happens
+        showModal('🅿️', 'Free Parking', `Player ${playerNum} takes a rest on Free Parking.`);
+    } else if (space.classList.contains('tax')) {
+        // Tax space
+        const taxAmount = spaceVal;
+        updateBalance(gameState.currentPlayer, -taxAmount);
+        showModal('💎', 'Tax Due!', `Player ${playerNum} must pay $${taxAmount} in taxes!`);
+    } else if (space.classList.contains('chance')) {
+        // Chance
+        drawCard('chance');
+        return;
+    } else if (space.classList.contains('cc')) {
+        // Community Chest
+        drawCard('community');
+        return;
+    } else if (space.classList.contains('property') || space.classList.contains('rr') || space.classList.contains('utility')) {
+        // Property space
+        handleProperty(space, spaceVal);
+        return;
+    }
+    
+    endTurn(isDoubles);
+}
+
+function handleProperty(space, price) {
+    const playerNum = gameState.currentPlayer + 1;
+    const otherPlayer = gameState.currentPlayer === 0 ? 1 : 0;
+    const spaceName = getSpaceName(space);
+    
+    // Check if already owned
+    if (gameState.players[gameState.currentPlayer].properties.includes(space.id)) {
+        showModal('🏠', 'Your Property', `Player ${playerNum} already owns ${spaceName}.`);
+    } else if (gameState.players[otherPlayer].properties.includes(space.id)) {
+        // Pay rent (10% of property value)
+        const rent = Math.floor(price * 0.1);
+        updateBalance(gameState.currentPlayer, -rent);
+        updateBalance(otherPlayer, rent);
+        showModal('💸', 'Rent Due!', `Player ${playerNum} pays $${rent} rent to Player ${otherPlayer + 1} for ${spaceName}!`);
+    } else {
+        // Buy property
+        if (gameState.players[gameState.currentPlayer].balance >= price) {
+            updateBalance(gameState.currentPlayer, -price);
+            gameState.players[gameState.currentPlayer].properties.push(space.id);
+            space.classList.add(gameState.currentPlayer === 0 ? 'owned-p1' : 'owned-p2');
+            showModal('🎉', 'Property Purchased!', `Player ${playerNum} bought ${spaceName} for $${price}!`);
+        } else {
+            showModal('❌', 'Cannot Afford', `Player ${playerNum} cannot afford ${spaceName} ($${price}).`);
+        }
+    }
+    
+    endTurn(false);
+}
+
+function drawCard(type) {
+    const cards = type === 'chance' ? chanceCards : communityChestCards;
+    const card = cards[Math.floor(Math.random() * cards.length)];
+    const playerNum = gameState.currentPlayer + 1;
+    const icon = type === 'chance' ? '❓' : '📦';
+    const title = type === 'chance' ? 'Chance!' : 'Community Chest!';
+    
+    // Process card action
+    switch (card.action) {
+        case 'receive':
+            updateBalance(gameState.currentPlayer, card.value);
+            break;
+        case 'pay':
+            updateBalance(gameState.currentPlayer, -card.value);
+            break;
+        case 'moveTo':
+            const player = gameState.players[gameState.currentPlayer];
+            if (card.value < player.position) {
+                updateBalance(gameState.currentPlayer, 200); // Passed GO
+            }
+            player.position = card.value;
+            moveTokenToPosition(gameState.currentPlayer, card.value);
+            break;
+        case 'moveBack':
+            const p = gameState.players[gameState.currentPlayer];
+            p.position = (p.position - card.value + 40) % 40;
+            moveTokenToPosition(gameState.currentPlayer, p.position);
+            break;
+        case 'jail':
+            showModal(icon, title, card.text);
+            sendToJail(gameState.currentPlayer);
+            endTurn(false);
+            return;
+    }
+    
+    showModal(icon, title, card.text);
+    endTurn(false);
+}
+
+function sendToJail(playerIndex) {
+    const player = gameState.players[playerIndex];
+    player.position = 10; // Jail position
+    player.inJail = true;
+    player.jailTurns = 0;
+    gameState.doublesCount = 0;
+    moveTokenToPosition(playerIndex, 10);
+}
+
+function updateBalance(playerIndex, amount) {
+    gameState.players[playerIndex].balance += amount;
+    updateBalanceDisplay();
+    
+    // Check for bankruptcy
+    if (gameState.players[playerIndex].balance < 0) {
+        gameState.gameOver = true;
+        const winner = playerIndex === 0 ? 2 : 1;
+        const loser = playerIndex + 1;
+        
+        setTimeout(() => {
+            winnerTitle.textContent = `Player ${winner} Wins!`;
+            winnerMessage.textContent = `Player ${loser} has gone bankrupt!`;
+            gameOverModal.classList.add('show');
+        }, 1000);
     }
 }
 
+function updateBalanceDisplay() {
+    player1AmtEl.textContent = `$${gameState.players[0].balance}`;
+    player2AmtEl.textContent = `$${gameState.players[1].balance}`;
+    
+    // Color code negative balances
+    player1AmtEl.style.color = gameState.players[0].balance < 0 ? '#c62828' : '#1b5e20';
+    player2AmtEl.style.color = gameState.players[1].balance < 0 ? '#c62828' : '#1b5e20';
+}
 
-// || nodeList[currentpos2] != Properties2[i]
-// else 
-// {
-//     alert("You already own this property");
-//     updateBalance(vals[i]/10);
-// }
+function updateTurnIndicator() {
+    if (gameState.currentPlayer === 0) {
+        player1Card.classList.add('active');
+        player2Card.classList.remove('active');
+        gameMessageEl.textContent = "Player 1's turn - Roll the dice!";
+    } else {
+        player1Card.classList.remove('active');
+        player2Card.classList.add('active');
+        gameMessageEl.textContent = "Player 2's turn - Roll the dice!";
+    }
+}
+
+function endTurn(rollAgain) {
+    if (gameState.gameOver) return;
+    
+    if (!rollAgain) {
+        gameState.currentPlayer = gameState.currentPlayer === 0 ? 1 : 0;
+        gameState.doublesCount = 0;
+    }
+    
+    updateTurnIndicator();
+    rollButton.disabled = false;
+}
+
+function getSpaceName(space) {
+    const nameEl = space.querySelector('.property-name, .special-name, .corner-title');
+    if (nameEl) {
+        return nameEl.textContent;
+    }
+    return space.id;
+}
+
+function showModal(icon, title, message) {
+    modalIcon.textContent = icon;
+    modalTitle.textContent = title;
+    modalMessage.textContent = message;
+    modal.classList.add('show');
+}
+
+function closeModal() {
+    modal.classList.remove('show');
+}
+
+function restartGame() {
+    // Reset game state
+    gameState.players = [
+        { position: 0, balance: 1500, properties: [], inJail: false, jailTurns: 0 },
+        { position: 0, balance: 1500, properties: [], inJail: false, jailTurns: 0 }
+    ];
+    gameState.currentPlayer = 0;
+    gameState.doublesCount = 0;
+    gameState.gameOver = false;
+    
+    // Clear property ownership classes
+    boardSpaces.forEach(space => {
+        space.classList.remove('owned-p1', 'owned-p2');
+    });
+    
+    // Reset UI
+    updateBalanceDisplay();
+    updateTurnIndicator();
+    diceTotalEl.classList.remove('show');
+    displayDice(dice1El, 1);
+    displayDice(dice2El, 1);
+    
+    // Move tokens back to GO
+    moveTokenToPosition(0, 0);
+    moveTokenToPosition(1, 0);
+    
+    // Close modal
+    gameOverModal.classList.remove('show');
+    rollButton.disabled = false;
+}
